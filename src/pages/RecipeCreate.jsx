@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+
 const RecipeCreate = () => {
   const { user } = useAuth();
   const [dragActive, setDragActive] = useState(false);
@@ -16,7 +17,6 @@ const RecipeCreate = () => {
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
 
-  // Post Form State
   const formRef = useRef(null);
   const formFileInputRef = useRef(null);
   const [isFormVisible, setIsFormVisible] = useState(false);
@@ -27,126 +27,84 @@ const RecipeCreate = () => {
   const [isPublishing, setIsPublishing] = useState(false);
 
   const handleDrag = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
+    e.preventDefault(); e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true);
+    else if (e.type === 'dragleave') setDragActive(false);
   };
 
   const processFiles = (files) => {
-    const validFiles = Array.from(files).filter(file => file.type.startsWith('image/')).slice(0, 3 - images.length);
-    
+    const validFiles = Array.from(files).filter(f => f.type.startsWith('image/')).slice(0, 3 - images.length);
     validFiles.forEach(file => {
       const reader = new FileReader();
       reader.onload = (e) => {
-        setImages(prev => [...prev, {
-          data: e.target.result,
-          mimeType: file.type,
-          id: Math.random().toString(36).substring(7)
-        }]);
+        setImages(prev => [...prev, { data: e.target.result, mimeType: file.type, id: Math.random().toString(36).substring(7) }]);
       };
       reader.readAsDataURL(file);
     });
   };
 
   const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      processFiles(e.dataTransfer.files);
-    }
+    if (e.dataTransfer.files?.[0]) processFiles(e.dataTransfer.files);
   };
 
   const handleChange = (e) => {
     e.preventDefault();
-    if (e.target.files && e.target.files[0]) {
-      processFiles(e.target.files);
-    }
+    if (e.target.files?.[0]) processFiles(e.target.files);
   };
 
-  const removeImage = (id) => {
-    setImages(prev => prev.filter(img => img.id !== id));
-  };
+  const removeImage = (id) => setImages(prev => prev.filter(img => img.id !== id));
 
   const generateRecipe = async () => {
     if (images.length === 0 && !requestText.trim()) {
-      alert("재료 사진을 업로드하거나 재료를 입력해주세요.");
+      alert('재료 사진을 업로드하거나 재료를 입력해주세요.');
       return;
     }
-
-    setLoading(true);
-    setResults(null);
-    setIsFormVisible(false); // Reset form visibility on new generation
+    setLoading(true); setResults(null); setIsFormVisible(false);
     try {
-      const finalRecipes = await runPipeline(images, requestText, (status) => {
-        setPipelineStatus(status);
-      });
+      const finalRecipes = await runPipeline(images, requestText, (status) => setPipelineStatus(status));
       setResults(finalRecipes);
     } catch (error) {
-      alert("에러가 발생했습니다: " + error.message);
+      alert('에러가 발생했습니다: ' + error.message);
     } finally {
-      setLoading(false);
-      setPipelineStatus('');
+      setLoading(false); setPipelineStatus('');
     }
   };
 
   const handleStartPost = (markdown) => {
     setFormContent(markdown);
-    // Extract title (e.g. # Title)
     const titleMatch = markdown.match(/^#\s+(.+)$/m);
-    if (titleMatch) {
-      setFormTitle(titleMatch[1]);
-    } else {
-      setFormTitle('');
-    }
+    setFormTitle(titleMatch ? titleMatch[1] : '');
     setIsFormVisible(true);
-    setTimeout(() => {
-      formRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
 
   const handleFormImageChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
+    if (e.target.files?.[0]) {
       const file = e.target.files[0];
       setFormImage(file);
       const reader = new FileReader();
-      reader.onload = (ev) => {
-        setFormImagePreview(ev.target.result);
-      };
+      reader.onload = (ev) => setFormImagePreview(ev.target.result);
       reader.readAsDataURL(file);
     }
   };
 
   const handlePublish = async (e) => {
     e.preventDefault();
-    if (!formTitle.trim() || !formContent.trim()) {
-      alert('제목과 내용을 모두 입력해주세요.');
-      return;
-    }
-    
+    if (!formTitle.trim() || !formContent.trim()) { alert('제목과 내용을 모두 입력해주세요.'); return; }
     setIsPublishing(true);
     try {
-      let imageUrl = null;
-      if (formImagePreview) {
-        // Firestore 1MB 제한을 고려해 Base64 문자열로 직접 저장
-        imageUrl = formImagePreview;
-      }
-
       await addDoc(collection(db, 'recipes'), {
         title: formTitle,
         content: formContent,
-        imageUrl: imageUrl,
+        imageUrl: formImagePreview || null,
         authorId: user.uid,
         authorName: user.displayName || '익명 요리사',
         authorEmail: user.email,
         likes: 0,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
       });
-
       alert('게시글이 성공적으로 등록되었습니다!');
       navigate('/recipes');
     } catch (error) {
@@ -158,257 +116,238 @@ const RecipeCreate = () => {
   };
 
   return (
-    <div className="pt-24 pb-20 min-h-screen px-6 max-w-4xl mx-auto">
-      <div className="text-center mb-12 animate-fade-in-up">
-        <h1 className="font-headline text-display-lg font-bold text-on-surface mb-4">
-          AI 레시피 생성
-        </h1>
-        <p className="font-body text-body-lg text-on-surface-variant">
-          냉장고에 있는 재료 사진을 올리거나 텍스트로 입력하면 AI 멀티에이전트 파이프라인이 완벽한 레시피를 만들어줍니다.
-        </p>
-      </div>
+    <div className="pt-24 pb-32 min-h-screen bg-[#fafafa]">
+      <div className="max-w-[1440px] mx-auto px-6 md:px-12">
+        {/* ── Page Header ── */}
+        <div className="mb-12 md:mb-16 animate-fade-in-up">
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-zinc-950 mb-4 md:mb-6">
+            AI 레시피 생성
+          </h1>
+          <p className="text-lg md:text-xl text-zinc-500 max-w-3xl leading-relaxed">
+            냉장고 속 재료 사진을 업로드하거나 원하는 조건을 텍스트로 입력하세요.
+            AI가 분석하여 당신만을 위한 완벽한 요리법을 제안합니다.
+          </p>
+        </div>
 
-      {!results && !loading && (
-        <div className="space-y-8 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
-          {/* Drag & Drop Zone */}
-          <div
-            className={`border-2 border-dashed rounded-3xl p-12 text-center transition-all duration-300 ${dragActive ? 'border-primary bg-primary/5' : 'border-outline-variant bg-surface-container-lowest hover:border-primary/50'}`}
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
-          >
-            <span className="material-symbols-outlined text-4xl text-primary mb-4 block">
-              cloud_upload
-            </span>
-            <h3 className="font-headline text-headline-md font-bold text-on-surface mb-2">
-              재료 사진 업로드 (최대 3장)
-            </h3>
-            <p className="font-body text-body-md text-on-surface-variant mb-6">
-              클릭하여 파일을 선택하거나 이곳으로 이미지를 드래그하세요.
-            </p>
-            <input 
-              type="file" 
-              multiple 
-              accept="image/*" 
-              className="hidden" 
-              ref={fileInputRef}
-              onChange={handleChange}
-            />
-            <button 
-              onClick={() => fileInputRef.current.click()}
-              className="bg-primary text-on-primary font-body text-label-md px-6 py-3 rounded-full hover:bg-primary-container hover:text-on-primary-container transition-colors shadow-md"
-            >
-              파일 선택하기
-            </button>
+        {/* ── Upload Form ── */}
+        {!results && !loading && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
+            {/* Left Column: Drag & Drop Zone */}
+            <div className="flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-zinc-950">재료 사진</h2>
+                <span className="text-sm font-medium text-zinc-400 bg-zinc-100 px-3 py-1 rounded-full">최대 3장</span>
+              </div>
+              <div
+                className={`flex-1 min-h-[360px] border-2 border-dashed rounded-3xl p-8 md:p-12 flex flex-col items-center justify-center text-center transition-all duration-200 group ${dragActive
+                    ? 'border-zinc-950 bg-zinc-50'
+                    : 'border-zinc-300 hover:border-zinc-400 bg-white'
+                  }`}
+                onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
+              >
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-colors ${dragActive ? 'bg-[#ff4500] text-white' : 'bg-zinc-100 text-zinc-500 group-hover:bg-zinc-200 group-hover:text-zinc-700'}`}>
+                  <span className="material-symbols-outlined text-3xl">add_photo_alternate</span>
+                </div>
+                <h3 className="text-lg font-bold text-zinc-950 mb-2">클릭하거나 이미지를 드래그하세요</h3>
+                <p className="text-zinc-500 mb-8 max-w-sm">
+                  PNG, JPG, JPEG 등 고화질 사진일수록 AI가 재료를 더 정확하게 인식합니다.
+                </p>
 
-            {/* Image Preview */}
-            {images.length > 0 && (
-              <div className="flex justify-center gap-4 mt-8">
-                {images.map(img => (
-                  <div key={img.id} className="relative w-24 h-24 rounded-xl overflow-hidden shadow-sm border border-surface-variant">
-                    <img src={img.data} alt="uploaded" className="w-full h-full object-cover" />
-                    <button 
-                      onClick={() => removeImage(img.id)}
-                      className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 hover:bg-black/80 transition-colors"
+                <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={handleChange} />
+                <button
+                  onClick={() => fileInputRef.current.click()}
+                  className="bg-white border border-zinc-200 text-zinc-950 text-base font-semibold px-8 py-3.5 rounded-xl hover:bg-zinc-50 hover:border-zinc-300 transition-all shadow-sm"
+                >
+                  파일 선택
+                </button>
+
+                {/* Image Previews */}
+                {images.length > 0 && (
+                  <div className="flex flex-wrap justify-center gap-4 mt-8 w-full">
+                    {images.map(img => (
+                      <div key={img.id} className="relative w-24 h-24 rounded-2xl overflow-hidden shadow-sm border border-zinc-200 group/img">
+                        <img src={img.data} alt="uploaded" className="w-full h-full object-cover transition-transform duration-300 group-hover/img:scale-105" />
+                        <button
+                          onClick={(e) => { e.stopPropagation(); removeImage(img.id); }}
+                          className="absolute top-1.5 right-1.5 bg-black/60 backdrop-blur-sm text-white rounded-full p-1 opacity-0 group-hover/img:opacity-100 hover:bg-black transition-all"
+                        >
+                          <span className="material-symbols-outlined text-sm">close</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right Column: Text Input & Actions */}
+            <div className="flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-zinc-950">추가 요청사항</h2>
+                <span className="text-sm font-medium text-zinc-400 bg-zinc-100 px-3 py-1 rounded-full">선택사항</span>
+              </div>
+              <textarea
+                value={requestText}
+                onChange={(e) => setRequestText(e.target.value)}
+                className="flex-1 min-h-[220px] lg:min-h-0 w-full bg-white border border-zinc-200 rounded-3xl p-6 text-zinc-950 text-base focus:outline-none focus:border-zinc-950 focus:ring-1 focus:ring-zinc-950 resize-none transition-all shadow-sm placeholder:text-zinc-400"
+                placeholder="예: 다이어트 중이라 칼로리가 낮은 요리를 원해. 매운 건 못 먹어."
+              />
+              <div className="mt-8 pt-8 border-t border-zinc-200">
+                <button
+                  onClick={generateRecipe}
+                  disabled={loading}
+                  className="w-full bg-[#ff4500] text-white font-bold text-lg h-16 rounded-2xl hover:bg-zinc-800 transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-3 shadow-lg shadow-zinc-950/20"
+                >
+                  <span className="material-symbols-outlined">auto_awesome</span>
+                  AI 레시피 생성하기
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Loading State ── */}
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-32 animate-fade-in bg-white rounded-3xl border border-zinc-200 shadow-sm">
+            <div className="w-16 h-16 border-4 border-zinc-100 border-t-zinc-950 rounded-full animate-spin mb-8" />
+            <h2 className="text-2xl font-bold text-zinc-950 mb-3 tracking-tight">
+              {pipelineStatus || '레시피를 생성하고 있습니다...'}
+            </h2>
+            <p className="text-zinc-500 text-lg">최적의 요리법과 재료의 조합을 찾고 있어요.</p>
+          </div>
+        )}
+
+        {/* ── Results State ── */}
+        {results && !loading && (
+          <div className="animate-fade-in-up">
+            <div className="flex items-center justify-between mb-8 pb-8 border-b border-zinc-200">
+              <div className="flex items-center gap-3 text-zinc-950">
+                <div className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-xl">auto_awesome</span>
+                </div>
+                <h2 className="text-2xl font-bold tracking-tight">생성된 레시피</h2>
+              </div>
+              {!isFormVisible && (
+                <button
+                  onClick={() => { setResults(null); setImages([]); setRequestText(''); }}
+                  className="text-zinc-500 hover:text-zinc-950 font-medium px-4 py-2 rounded-lg hover:bg-zinc-100 transition-colors"
+                >
+                  처음으로 돌아가기
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-12 mb-16">
+              {results.map((recipe, index) => (
+                <div key={index} className="bg-white rounded-[2rem] p-8 md:p-12 shadow-sm border border-zinc-200 overflow-hidden relative group">
+                  <div className="prose max-w-none">
+                    <ReactMarkdown>{recipe.markdown}</ReactMarkdown>
+                  </div>
+                  <div className="mt-10 pt-8 border-t border-zinc-100 flex justify-end">
+                    <button
+                      onClick={() => handleStartPost(recipe.markdown)}
+                      className="flex items-center justify-center gap-2 bg-[#ff4500] text-white font-semibold px-8 h-14 rounded-xl hover:bg-zinc-800 transition-all active:scale-[0.98]"
                     >
-                      <span className="material-symbols-outlined text-[16px]">close</span>
+                      <span className="material-symbols-outlined text-lg">edit_document</span>
+                      이 레시피로 게시글 작성하기
                     </button>
                   </div>
-                ))}
+                </div>
+              ))}
+            </div>
+
+            {/* ── Post Editor ── */}
+            {isFormVisible && (
+              <div ref={formRef} className="animate-fade-in-up pt-8">
+                <div className="bg-white rounded-[2.5rem] p-8 md:p-16 shadow-xl shadow-zinc-200/50 border border-zinc-200">
+                  <div className="flex items-center gap-4 mb-12">
+                    <div className="w-12 h-12 rounded-2xl bg-zinc-100 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-zinc-950 text-2xl">stylus_note</span>
+                    </div>
+                    <h2 className="text-3xl font-extrabold text-zinc-950 tracking-tight">레시피 게시글 작성</h2>
+                  </div>
+
+                  <form onSubmit={handlePublish} className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+                    {/* Left Col: Meta */}
+                    <div className="lg:col-span-1 flex flex-col gap-8">
+                      <div>
+                        <label className="text-sm font-bold text-zinc-950 block mb-3">게시글 제목</label>
+                        <input
+                          type="text"
+                          value={formTitle}
+                          onChange={(e) => setFormTitle(e.target.value)}
+                          className="w-full px-5 h-14 bg-zinc-50 rounded-xl border border-zinc-200 focus:border-zinc-950 focus:bg-white focus:ring-1 focus:ring-zinc-950 outline-none transition-all font-medium text-zinc-950"
+                          placeholder="멋진 요리 제목을 입력하세요"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-bold text-zinc-950 block mb-3">대표 이미지</label>
+                        <div
+                          className="w-full aspect-square rounded-2xl border-2 border-dashed border-zinc-300 bg-zinc-50 flex flex-col items-center justify-center overflow-hidden cursor-pointer hover:border-zinc-400 hover:bg-zinc-100 transition-all group"
+                          onClick={() => formFileInputRef.current.click()}
+                        >
+                          {formImagePreview ? (
+                            <img src={formImagePreview} alt="Preview" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                          ) : (
+                            <>
+                              <span className="material-symbols-outlined text-zinc-400 text-4xl mb-3">add_photo_alternate</span>
+                              <span className="text-sm font-medium text-zinc-500">클릭하여 이미지 업로드</span>
+                            </>
+                          )}
+                        </div>
+                        <input type="file" accept="image/*" className="hidden" ref={formFileInputRef} onChange={handleFormImageChange} />
+                      </div>
+                    </div>
+
+                    {/* Right Col: Editor & Submit */}
+                    <div className="lg:col-span-2 flex flex-col gap-8">
+                      <div className="flex-1 flex flex-col">
+                        <label className="text-sm font-bold text-zinc-950 block mb-3">레시피 상세 내용 (마크다운 지원)</label>
+                        <textarea
+                          value={formContent}
+                          onChange={(e) => setFormContent(e.target.value)}
+                          className="flex-1 min-h-[400px] w-full p-6 bg-zinc-50 rounded-2xl border border-zinc-200 focus:border-zinc-950 focus:bg-white focus:ring-1 focus:ring-zinc-950 outline-none transition-all text-base text-zinc-900 leading-relaxed font-mono resize-y"
+                          required
+                        />
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                        <button
+                          type="button"
+                          onClick={() => setIsFormVisible(false)}
+                          className="flex-1 bg-white border border-zinc-200 text-zinc-950 font-bold text-lg h-16 rounded-2xl hover:bg-zinc-50 transition-all"
+                          disabled={isPublishing}
+                        >
+                          취소
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isPublishing}
+                          className="flex-[2] bg-[#ff4500] text-white font-bold text-lg h-16 rounded-2xl hover:bg-zinc-800 transition-all flex items-center justify-center gap-3 disabled:opacity-50 shadow-lg shadow-zinc-950/20 active:scale-[0.98]"
+                        >
+                          {isPublishing ? (
+                            <>
+                              <div className="w-5 h-5 border-2 border-zinc-500 border-t-white rounded-full animate-spin" />
+                              업로드 중...
+                            </>
+                          ) : (
+                            <>
+                              <span className="material-symbols-outlined text-xl">send</span>
+                              커뮤니티에 공유하기
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
               </div>
             )}
           </div>
-
-          <div className="relative flex items-center py-4">
-            <div className="flex-grow border-t border-surface-variant"></div>
-            <span className="flex-shrink-0 mx-4 font-body text-label-md text-on-surface-variant">또는 추가 요청</span>
-            <div className="flex-grow border-t border-surface-variant"></div>
-          </div>
-
-          <div className="space-y-4">
-            <label className="font-headline text-body-lg font-bold text-on-surface block">
-              재료 또는 추가 요청사항 직접 입력
-            </label>
-            <textarea
-              value={requestText}
-              onChange={(e) => setRequestText(e.target.value)}
-              className="w-full h-32 p-4 bg-surface-container-lowest border border-surface-variant rounded-2xl focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors font-body text-body-md resize-none"
-              placeholder="예: 다이어트 중이라 칼로리가 낮은 요리를 원해. 매운 건 못 먹어."
-            ></textarea>
-          </div>
-
-          <button
-            onClick={generateRecipe}
-            disabled={loading}
-            className="w-full bg-primary text-on-primary font-headline text-body-lg font-bold py-4 rounded-2xl hover:opacity-90 transition-opacity shadow-editorial disabled:opacity-50"
-          >
-            AI 레시피 만들기
-          </button>
-        </div>
-      )}
-
-      {loading && (
-        <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
-          <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-6"></div>
-          <h2 className="font-headline text-headline-md font-bold text-on-surface mb-2">
-            {pipelineStatus || '레시피를 생성하고 있습니다...'}
-          </h2>
-          <p className="font-body text-body-md text-on-surface-variant">
-            최적의 요리법과 재료의 조합을 찾고 있어요.
-          </p>
-        </div>
-      )}
-
-      {results && !loading && (
-        <div className="animate-fade-in-up">
-          <div className="flex items-center gap-3 text-primary mb-8 justify-center">
-            <span className="material-symbols-outlined">auto_awesome</span>
-            <span className="font-headline text-label-md font-bold uppercase tracking-wider">
-              생성 완료
-            </span>
-          </div>
-          
-          <div className="space-y-8 mb-12">
-            {results.map((recipe, index) => (
-              <div key={index} className="bg-surface-container-lowest rounded-3xl p-8 shadow-editorial border border-surface-variant">
-                <div className="prose prose-p:font-body prose-headings:font-headline max-w-none text-on-surface">
-                  <ReactMarkdown>{recipe.markdown}</ReactMarkdown>
-                </div>
-                <div className="mt-8 pt-6 border-t border-surface-variant flex justify-end">
-                  <button 
-                    onClick={() => handleStartPost(recipe.markdown)}
-                    className="flex items-center gap-2 bg-primary-container text-on-primary-container font-body text-label-md px-6 py-3 rounded-full hover:opacity-90 transition-all shadow-md active:scale-95"
-                  >
-                    <span className="material-symbols-outlined text-[20px]">edit_document</span>
-                    이 레시피로 게시글 작성하기
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {!isFormVisible && (
-            <div className="flex justify-center">
-              <button
-                onClick={() => {
-                  setResults(null);
-                  setImages([]);
-                  setRequestText('');
-                }}
-                className="bg-surface-container text-on-surface font-headline text-body-lg font-bold px-8 py-4 rounded-2xl hover:bg-surface-container-high transition-colors"
-              >
-                다시 생성하기
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Post Editor Form */}
-      {isFormVisible && (
-        <div ref={formRef} className="mt-16 animate-fade-in-up border-t-2 border-primary/20 pt-16">
-          <div className="bg-surface-container-lowest rounded-[2rem] p-8 md:p-10 shadow-editorial border border-surface-variant">
-            <div className="flex items-center gap-3 mb-8">
-              <span className="material-symbols-outlined text-primary text-3xl">stylus_note</span>
-              <h2 className="font-headline text-display-lg font-bold text-on-surface">
-                레시피 게시글 작성
-              </h2>
-            </div>
-
-            <form onSubmit={handlePublish} className="space-y-6">
-              {/* Title */}
-              <div>
-                <label className="font-headline text-body-lg font-bold text-on-surface block mb-2">제목</label>
-                <input
-                  type="text"
-                  value={formTitle}
-                  onChange={(e) => setFormTitle(e.target.value)}
-                  className="w-full px-6 py-4 bg-surface-container-low rounded-2xl border border-surface-variant focus:border-primary focus:bg-surface-container-lowest focus:ring-4 focus:ring-primary/10 outline-none transition-all font-body text-body-lg"
-                  placeholder="멋진 요리 제목을 입력하세요"
-                  required
-                />
-              </div>
-
-              {/* Cover Image Upload */}
-              <div>
-                <label className="font-headline text-body-lg font-bold text-on-surface block mb-2">대표 이미지</label>
-                <div className="flex items-center gap-4">
-                  <div 
-                    className="w-40 h-40 md:w-48 md:h-48 rounded-2xl border-2 border-dashed border-outline-variant bg-surface-container flex items-center justify-center overflow-hidden cursor-pointer hover:border-primary hover:bg-surface-container-low transition-all"
-                    onClick={() => formFileInputRef.current.click()}
-                  >
-                    {formImagePreview ? (
-                      <img src={formImagePreview} alt="Preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="material-symbols-outlined text-outline-variant text-4xl">add_photo_alternate</span>
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-body text-body-md text-on-surface-variant mb-2">
-                      게시판 리스트에 보여질 먹음직스러운 완성 사진을 올려주세요.
-                    </p>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      className="hidden" 
-                      ref={formFileInputRef}
-                      onChange={handleFormImageChange}
-                    />
-                    <button 
-                      type="button"
-                      onClick={() => formFileInputRef.current.click()}
-                      className="bg-surface-container-high text-on-surface font-body text-label-md px-6 py-2 rounded-full hover:bg-surface-variant transition-colors"
-                    >
-                      {formImagePreview ? '이미지 변경' : '이미지 추가'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Markdown Editor */}
-              <div>
-                <label className="font-headline text-body-lg font-bold text-on-surface block mb-2">레시피 상세 내용 (수정 가능)</label>
-                <textarea
-                  value={formContent}
-                  onChange={(e) => setFormContent(e.target.value)}
-                  className="w-full h-[400px] p-6 bg-surface-container-low rounded-2xl border border-surface-variant focus:border-primary focus:bg-surface-container-lowest focus:ring-4 focus:ring-primary/10 outline-none transition-all font-body text-body-md resize-y leading-relaxed"
-                  required
-                ></textarea>
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-4 pt-4 border-t border-surface-variant">
-                <button
-                  type="button"
-                  onClick={() => setIsFormVisible(false)}
-                  className="flex-1 bg-surface-container-high text-on-surface font-headline text-body-lg font-bold py-4 rounded-2xl hover:bg-surface-variant transition-colors"
-                  disabled={isPublishing}
-                >
-                  취소
-                </button>
-                <button
-                  type="submit"
-                  disabled={isPublishing}
-                  className="flex-1 bg-primary text-on-primary font-headline text-body-lg font-bold py-4 rounded-2xl hover:opacity-90 transition-opacity shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isPublishing ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-on-primary/20 border-t-on-primary rounded-full animate-spin"></div>
-                      업로드 중...
-                    </>
-                  ) : (
-                    <>
-                      <span className="material-symbols-outlined text-[20px]">send</span>
-                      게시하기
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
